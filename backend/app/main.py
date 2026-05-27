@@ -1,3 +1,11 @@
+"""FastAPI backend for the Local Finance Skill Console.
+
+This module provides REST API endpoints for:
+- Listing available financial analysis skills
+- Running skills with user-provided queries and parameters
+- Downloading generated output files securely
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -12,12 +20,24 @@ from .skills import list_skills
 
 
 class RunRequest(BaseModel):
-    skillId: str = Field(..., min_length=1)
-    query: str = Field(..., min_length=1)
-    params: dict[str, Any] = Field(default_factory=dict)
+    """Request model for running a skill.
+
+    Attributes:
+        skillId: The unique identifier of the skill to execute.
+        query: The user's natural language query or command.
+        params: Optional skill-specific parameters.
+    """
+
+    skillId: str = Field(..., min_length=1, description="Skill identifier")
+    query: str = Field(..., min_length=1, description="User query")
+    params: dict[str, Any] = Field(default_factory=dict, description="Skill parameters")
 
 
-app = FastAPI(title="Local Finance Skill Console", version="0.1.0")
+app = FastAPI(
+    title="Local Finance Skill Console",
+    version="0.1.0",
+    description="API for running local financial analysis skills",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,16 +50,29 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
+    """Health check endpoint."""
     return {"status": "ok"}
 
 
 @app.get("/api/skills")
 def skills() -> dict[str, Any]:
+    """Return list of all registered skills."""
     return {"skills": list_skills()}
 
 
 @app.post("/api/runs")
 async def runs(request: RunRequest) -> dict[str, Any]:
+    """Execute a skill with the provided query and parameters.
+
+    Args:
+        request: RunRequest containing skillId, query, and params.
+
+    Returns:
+        Execution result with content, files, links, and status.
+
+    Raises:
+        HTTPException: 400 if skill execution fails due to invalid input.
+    """
     try:
         return await run_skill(request.skillId, request.query, request.params)
     except ValueError as exc:
@@ -48,6 +81,18 @@ async def runs(request: RunRequest) -> dict[str, Any]:
 
 @app.get("/api/files")
 def files(path: str = Query(..., min_length=1)) -> FileResponse:
+    """Download a generated file from allowed output directories.
+
+    Args:
+        path: Absolute or relative path to the file.
+
+    Returns:
+        FileResponse for the requested file.
+
+    Raises:
+        HTTPException: 403 if path is outside allowed directories.
+        HTTPException: 404 if file does not exist.
+    """
     try:
         resolved = allowed_file_path(path)
     except ValueError as exc:
