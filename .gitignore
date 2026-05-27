@@ -1,49 +1,85 @@
 ```
-# Compiled and build artifacts
-*.pyc
-__pycache__/
-*.o
-*.obj
-*.so
-*.a
-*.dll
-*.exe
-*.out
-
 # Dependencies
-.venv/
-venv/
+node_modules/
+
+# Build artifacts
+dist/
+build/
+*.js.map
+
+# Environment
 .env
 .env.local
-*.env.*
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
+.env.*
 
 # Editors
 .vscode/
 .idea/
 
-# Coverage and testing
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.python-version
+
+# Temp files
+*.tmp
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
 .coverage
 coverage/
 htmlcov/
-.pytest_cache/
+
+# MyPy
 .mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Distribution artifacts
-dist/
-build/
-target/
-.gradle/
+# Pytest
+.pytest_cache/
 
-# Node.js
-node_modules/
+# VCS
+.git/
+.hg/
+.svn/
+.cvs
 
-# System files
-.DS_Store
-Thumbs.db
+# Compressed
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
