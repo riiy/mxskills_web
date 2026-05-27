@@ -5,7 +5,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import './styles.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001';
 
 function groupSkills(skills) {
   return skills.reduce((groups, skill) => {
