@@ -5,7 +5,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import './styles.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://finance-skills.acquirecord.top';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 
 async function readApiJson(response, fallbackMessage) {
   const text = await response.text();
