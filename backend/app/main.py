@@ -8,6 +8,7 @@ This module provides REST API endpoints for:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
@@ -15,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from .runner import allowed_file_path, run_skill
+from .runner import allowed_file_path, run_skill, safe_download_name
 from .skills import list_skills
 
 
@@ -80,7 +81,7 @@ async def runs(request: RunRequest) -> dict[str, Any]:
 
 
 @app.get("/api/files")
-def files(path: str = Query(..., min_length=1)) -> FileResponse:
+def files(path: str = Query(..., min_length=1), filename: str | None = Query(None, min_length=1)) -> FileResponse:
     """Download a generated file from allowed output directories.
 
     Args:
@@ -99,4 +100,7 @@ def files(path: str = Query(..., min_length=1)) -> FileResponse:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return FileResponse(resolved, filename=resolved.name)
+    download_name = safe_download_name(filename) if filename else resolved.name
+    if Path(download_name).suffix.lower() != resolved.suffix.lower():
+        download_name = f"{Path(download_name).stem}{resolved.suffix}"
+    return FileResponse(resolved, filename=download_name)

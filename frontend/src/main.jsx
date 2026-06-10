@@ -227,7 +227,11 @@ function App() {
             {result?.files?.length ? (
               <div className="artifact-list">
                 {result.files.map((file) => (
-                  <a key={file.path} href={`${API_BASE}/api/files?path=${encodeURIComponent(file.path)}`}>
+                  <a
+                    key={file.path}
+                    href={`${API_BASE}/api/files?path=${encodeURIComponent(file.path)}&filename=${encodeURIComponent(file.name)}`}
+                    download={file.name}
+                  >
                     <Download size={15} />
                     <span>{file.name}</span>
                   </a>

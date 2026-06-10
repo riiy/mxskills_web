@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ class UrlPattern:
 
 FILE_PATTERN = FilePattern()
 URL_PATTERN = UrlPattern()
+FILE_SUFFIX_RE = re.compile(r"\.(md|txt|csv|xlsx|pdf|docx?|DOCX?|PDF)$")
 
 OUTPUT_ROOTS: list[Path] = [
     ROOT_DIR / "miaoxiang",
@@ -43,6 +45,67 @@ OUTPUT_ROOTS: list[Path] = [
 ]
 
 DEFAULT_TIMEOUT_SECONDS: int = 180
+
+
+def safe_download_name(name: str) -> str:
+    """Return a filesystem-safe download name while preserving readable text."""
+    cleaned = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "-", name)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .-")
+    return cleaned[:140] or "download"
+
+
+def _compact_subject(text: str, max_length: int = 36) -> str:
+    subject = safe_download_name(text)
+    return subject[:max_length].strip(" .-") or "查询结果"
+
+
+def _file_kind_label(file: dict[str, str], total_files: int) -> str:
+    kind = file.get("kind", "").lower()
+    kind_labels = {
+        "pdf": "PDF",
+        "doc": "Word",
+        "docx": "Word",
+        "xlsx": "Excel",
+        "csv": "CSV",
+        "md": "Markdown",
+        "txt": "文本",
+    }
+    if kind in kind_labels:
+        return kind_labels[kind]
+    suffix = Path(file["path"]).suffix.lower().lstrip(".")
+    if total_files > 1 and suffix in kind_labels:
+        return kind_labels[suffix]
+    return ""
+
+
+def apply_meaningful_file_names(
+    result: dict[str, Any],
+    skill: Skill,
+    query: str,
+    extra_parts: list[str] | None = None,
+) -> dict[str, Any]:
+    """Attach readable, safe names for generated artifacts."""
+    files = result.get("files") or []
+    if not files:
+        return result
+    date_part = datetime.now().strftime("%Y%m%d")
+    extra = [safe_download_name(part) for part in extra_parts or [] if str(part).strip()]
+    seen: dict[str, int] = {}
+    for file in files:
+        path = Path(file["path"])
+        parts = [skill.title, _compact_subject(query), *extra]
+        kind = _file_kind_label(file, len(files))
+        if kind:
+            parts.append(kind)
+        parts.append(date_part)
+        base_name = safe_download_name("-".join(parts))
+        candidate = f"{base_name}{path.suffix}"
+        count = seen.get(candidate, 0)
+        seen[candidate] = count + 1
+        if count:
+            candidate = f"{base_name}-{count + 1}{path.suffix}"
+        file["name"] = candidate
+    return result
 
 
 def build_command(skill: Skill, query: str, params: dict[str, Any] | None = None) -> list[str]:
@@ -145,33 +208,41 @@ def extract_files(text: str, payload: Any | None = None) -> list[dict[str, str]]
     Returns:
         List of unique file objects with path and name fields.
     """
-    raw_paths: list[str] = []
-    raw_paths.extend(match.group("path").rstrip("。,.，") for match in FILE_PATTERN.pattern.finditer(text))
+    raw_paths: list[tuple[str, str | None]] = []
+    raw_paths.extend((match.group("path").rstrip("。,.，"), None) for match in FILE_PATTERN.pattern.finditer(text))
 
-    def visit(value: Any) -> None:
+    def visit(value: Any, kind: str | None = None) -> None:
         if isinstance(value, dict):
-            for item in value.values():
-                visit(item)
+            for key, item in value.items():
+                visit(item, str(key))
         elif isinstance(value, list):
             for item in value:
-                visit(item)
-        elif isinstance(value, str) and re.search(r"\.(md|txt|csv|xlsx|pdf|docx?|DOCX?|PDF)$", value):
-            raw_paths.append(value)
+                visit(item, kind)
+        elif isinstance(value, str) and FILE_SUFFIX_RE.search(value):
+            raw_paths.append((value, kind))
 
     visit(payload)
 
     files: dict[str, dict[str, str]] = {}
-    for raw_path in raw_paths:
+    for raw_path, kind in raw_paths:
         path = Path(raw_path)
         if not path.is_absolute():
             path = (ROOT_DIR / raw_path).resolve()
         else:
             path = path.resolve()
-        files[str(path)] = {"path": str(path), "name": path.name}
+        file = files.setdefault(str(path), {"path": str(path), "name": path.name})
+        if kind and "kind" not in file:
+            file["kind"] = safe_download_name(kind).lower()
     return list(files.values())
 
 
-def normalize_result(skill_id: str, stdout: str, stderr: str, returncode: int) -> dict[str, Any]:
+def normalize_result(
+    skill_id: str,
+    stdout: str,
+    stderr: str,
+    returncode: int,
+    query: str | None = None,
+) -> dict[str, Any]:
     """Normalize skill execution output into a consistent response format.
 
     Args:
@@ -194,7 +265,7 @@ def normalize_result(skill_id: str, stdout: str, stderr: str, returncode: int) -
         message = payload.get("message") or payload.get("error")
     if not ok and not message:
         message = stderr.strip() or text or f"脚本执行失败，退出码 {returncode}"
-    return {
+    result = {
         "ok": ok,
         "skillId": skill_id,
         "content": text,
@@ -204,6 +275,9 @@ def normalize_result(skill_id: str, stdout: str, stderr: str, returncode: int) -
         "stderr": stderr.strip(),
         "message": message,
     }
+    if query:
+        result = apply_meaningful_file_names(result, get_skill(skill_id), query)
+    return result
 
 
 def _run_subprocess(command: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
@@ -231,7 +305,7 @@ def _run_subprocess(command: list[str], timeout: int) -> subprocess.CompletedPro
     )
 
 
-async def run_command(skill: Skill, command: list[str]) -> dict[str, Any]:
+async def run_command(skill: Skill, command: list[str], query: str | None = None) -> dict[str, Any]:
     """Execute a skill command asynchronously with timeout handling.
 
     Args:
@@ -254,7 +328,7 @@ async def run_command(skill: Skill, command: list[str]) -> dict[str, Any]:
             "stderr": "",
             "message": "执行超时，请稍后重试或缩小查询范围。",
         }
-    return normalize_result(skill.id, completed.stdout, completed.stderr, completed.returncode)
+    return normalize_result(skill.id, completed.stdout, completed.stderr, completed.returncode, query)
 
 
 async def run_regular_skill(skill_id: str, query: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -270,7 +344,7 @@ async def run_regular_skill(skill_id: str, query: str, params: dict[str, Any] | 
     """
     skill = get_skill(skill_id)
     command = build_command(skill, query, params)
-    result = await run_command(skill, command)
+    result = await run_command(skill, command, query)
     result["command"] = command
     return result
 
@@ -344,8 +418,9 @@ async def run_earnings_review(query: str, params: dict[str, Any] | None = None) 
         "--report-date",
         str(report_date),
     ]
-    review_result = await run_command(skill, review_cmd)
+    review_result = await run_command(skill, review_cmd, query)
     review_result["steps"] = {"entity": entity, "period": period_payload}
+    apply_meaningful_file_names(review_result, skill, query, [str(report_date)])
     if review_result["content"]:
         review_result["content"] = f"报告期：{report_date}\n\n{review_result['content']}"
     return review_result

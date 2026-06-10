@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
+from fastapi.testclient import TestClient
 
+from app.main import app
 from app.runner import allowed_file_path, build_command, normalize_result, run_skill
 from app.skills import ROOT_DIR, get_skill, list_skills
 
@@ -42,6 +45,21 @@ def test_file_serving_allows_known_output_root() -> None:
     assert allowed_file_path(str(file_path)) == file_path.resolve()
 
 
+def test_file_download_accepts_safe_display_filename() -> None:
+    output_dir = ROOT_DIR / "miaoxiang" / "test_console"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    file_path = output_dir / "source.pdf"
+    file_path.write_text("ok", encoding="utf-8")
+
+    response = TestClient(app).get(
+        "/api/files",
+        params={"path": str(file_path), "filename": "股票综合诊断-东方财富-PDF-20260610.pdf"},
+    )
+
+    assert response.status_code == 200
+    assert quote("股票综合诊断-东方财富-PDF-20260610.pdf") in response.headers["content-disposition"]
+
+
 def test_normalizer_parses_json_text_and_files() -> None:
     json_result = normalize_result(
         "mx-financial-assistant",
@@ -66,7 +84,8 @@ async def test_run_skill_uses_subprocess_mock(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("app.runner.subprocess.run", fake_run)
     result = await run_skill("stock-diagnosis", "东方财富怎么样")
     assert result["ok"] is True
-    assert result["files"][0]["name"] == "out.md"
+    assert result["files"][0]["name"].startswith("股票综合诊断-东方财富怎么样-")
+    assert result["files"][0]["name"].endswith(".md")
 
 
 @pytest.mark.asyncio
@@ -84,6 +103,7 @@ async def test_earnings_review_mock_success(monkeypatch: pytest.MonkeyPatch) -> 
     result = await run_skill("stock-earnings-review", "东方财富业绩点评")
     assert result["ok"] is True
     assert "报告期：2025-12-31" in result["content"]
+    assert "上市公司业绩点评-东方财富业绩点评-2025-12-31-PDF-" in result["files"][0]["name"]
 
 
 @pytest.mark.asyncio
