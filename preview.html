@@ -104,14 +104,16 @@
 
   input {
     width: 100%;
-    padding: 12px;
+    padding: 14px;
     background: #080808;
     border: 2px solid #444;
     color: #00ff66;
     border-radius: 8px;
-    font-size: 18px;
+    font-size: 20px;
     font-family: inherit;
     outline: none;
+    text-align: center;
+    letter-spacing: 4px;
   }
 
   input:focus {
@@ -154,6 +156,10 @@
 
   .defuse:hover {
     background: #009944;
+  }
+
+  .hidden {
+    display: none;
   }
 
   .keypad {
@@ -370,14 +376,16 @@
 
     <div class="screen">
       <div class="timer" id="timer">00:40</div>
-      <div class="status" id="status">设置密码后启动炸弹</div>
+      <div class="status" id="status">输入密码，然后启动炸弹</div>
     </div>
 
     <div class="panel">
-      <input id="passwordInput" type="password" placeholder="设置拆弹密码，例如 7355608" />
-      <button class="arm" id="armBtn">启动炸弹</button>
-
-      <input id="codeInput" readonly placeholder="输入拆弹密码" />
+      <input
+        id="mainInput"
+        type="password"
+        readonly
+        placeholder="设置密码"
+      />
 
       <div class="keypad">
         <button data-key="1">1</button>
@@ -394,20 +402,21 @@
         <button data-key="OK">OK</button>
       </div>
 
-      <button class="defuse" id="defuseBtn">拆除炸弹</button>
+      <button class="arm" id="armBtn">启动炸弹</button>
+      <button class="defuse hidden" id="defuseBtn">拆除炸弹</button>
     </div>
 
     <div class="hint">
-      规则：启动后倒计时 40 秒。输入正确密码即可拆除。<br />
-      最后 10 秒蜂鸣会加速。音效和台词由浏览器实时生成。
+      同一个输入框：未启动时设置密码，启动后输入拆弹密码。<br />
+      OK 键：未启动时启动炸弹，启动后尝试拆除炸弹。<br />
+      最后 10 秒蜂鸣加速，爆炸后有闪光、震动、冲击波和碎片效果。
     </div>
   </div>
 
 <script>
   const timerEl = document.getElementById("timer");
   const statusEl = document.getElementById("status");
-  const passwordInput = document.getElementById("passwordInput");
-  const codeInput = document.getElementById("codeInput");
+  const mainInput = document.getElementById("mainInput");
   const armBtn = document.getElementById("armBtn");
   const defuseBtn = document.getElementById("defuseBtn");
   const bombEl = document.getElementById("bomb");
@@ -509,9 +518,7 @@
 
   function getBeepDelay() {
     if (timeLeft > 10) return 1000;
-
-    const delay = timeLeft * 70;
-    return Math.max(80, delay);
+    return Math.max(80, timeLeft * 70);
   }
 
   function startBeepLoop() {
@@ -519,9 +526,7 @@
 
     function loop() {
       if (!armed || finished) return;
-
       playBeep();
-
       beepTimer = setTimeout(loop, getBeepDelay());
     }
 
@@ -639,13 +644,42 @@
     effectsLayer.innerHTML = "";
   }
 
+  function updateInputMode() {
+    if (!armed && !finished) {
+      mainInput.placeholder = "设置密码";
+      armBtn.classList.remove("hidden");
+      defuseBtn.classList.add("hidden");
+      return;
+    }
+
+    if (armed && !finished) {
+      mainInput.placeholder = "输入拆弹密码";
+      armBtn.classList.add("hidden");
+      defuseBtn.classList.remove("hidden");
+      return;
+    }
+
+    if (finished) {
+      mainInput.placeholder = "重新设置密码";
+      armBtn.classList.remove("hidden");
+      defuseBtn.classList.add("hidden");
+    }
+  }
+
   function armBomb() {
     initAudio();
 
-    password = passwordInput.value.trim();
+    if (armed && !finished) {
+      statusEl.textContent = "炸弹已经启动";
+      statusEl.style.color = "#ffcc00";
+      playErrorSound();
+      return;
+    }
+
+    password = mainInput.value.trim();
 
     if (!password) {
-      statusEl.textContent = "必须先设置拆弹密码";
+      statusEl.textContent = "必须先输入密码";
       statusEl.style.color = "#ffcc00";
       playErrorSound();
       return;
@@ -658,7 +692,9 @@
     timeLeft = 40;
     armed = true;
     finished = false;
-    codeInput.value = "";
+
+    mainInput.value = "";
+    updateInputMode();
 
     timerEl.textContent = formatTime(timeLeft);
     statusEl.textContent = "炸弹已启动";
@@ -698,10 +734,11 @@
     if (!armed || finished) {
       statusEl.textContent = "炸弹尚未启动";
       statusEl.style.color = "#aaa";
+      playErrorSound();
       return;
     }
 
-    if (codeInput.value === password) {
+    if (mainInput.value === password) {
       finished = true;
       armed = false;
 
@@ -714,14 +751,16 @@
       statusEl.textContent = "炸弹已拆除";
       statusEl.style.color = "#00ff66";
 
+      mainInput.value = "";
+      updateInputMode();
+
       playDefuseSound();
       speakLine("Bomb has been defused.", 100);
       speakLine("Counter-Terrorists win.", 1500);
     } else {
       statusEl.textContent = "密码错误";
       statusEl.style.color = "#ffcc00";
-      codeInput.value = "";
-
+      mainInput.value = "";
       playErrorSound();
     }
   }
@@ -742,6 +781,9 @@
     statusEl.textContent = "炸弹爆炸";
     statusEl.style.color = "#fff";
 
+    mainInput.value = "";
+    updateInputMode();
+
     bombEl.classList.add("exploded-bomb");
 
     playExplosionSound();
@@ -750,55 +792,54 @@
     speakLine("Terrorists win.", 900);
   }
 
+  function pressKey(key) {
+    initAudio();
+
+    if (key === "DEL") {
+      mainInput.value = mainInput.value.slice(0, -1);
+      playTone(300, 0.04, "square", 0.08);
+      return;
+    }
+
+    if (key === "OK") {
+      if (armed && !finished) {
+        defuseBomb();
+      } else {
+        armBomb();
+      }
+      return;
+    }
+
+    if (/^\d$/.test(key)) {
+      mainInput.value += key;
+      playKeySound();
+    }
+  }
+
   armBtn.addEventListener("click", armBomb);
   defuseBtn.addEventListener("click", defuseBomb);
 
   keypad.addEventListener("click", (e) => {
     const key = e.target.dataset.key;
     if (!key) return;
-
-    initAudio();
-
-    if (key === "DEL") {
-      codeInput.value = codeInput.value.slice(0, -1);
-      playTone(300, 0.04, "square", 0.08);
-      return;
-    }
-
-    if (key === "OK") {
-      defuseBomb();
-      return;
-    }
-
-    if (!armed || finished) {
-      playErrorSound();
-      statusEl.textContent = "请先启动炸弹";
-      statusEl.style.color = "#aaa";
-      return;
-    }
-
-    codeInput.value += key;
-    playKeySound();
+    pressKey(key);
   });
 
   document.addEventListener("keydown", (e) => {
     if (/^\d$/.test(e.key)) {
-      initAudio();
-
-      if (!armed || finished) return;
-
-      codeInput.value += e.key;
-      playKeySound();
+      pressKey(e.key);
     }
 
     if (e.key === "Backspace") {
-      codeInput.value = codeInput.value.slice(0, -1);
+      pressKey("DEL");
     }
 
     if (e.key === "Enter") {
-      defuseBomb();
+      pressKey("OK");
     }
   });
+
+  updateInputMode();
 </script>
 </body>
 </html>
