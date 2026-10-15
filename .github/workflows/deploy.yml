@@ -1,0 +1,65 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create deployment bundle
+        run: |
+          mkdir -p deploy_bundle
+          cp -r frontend/dist deploy_bundle/frontend
+          cp -r backend deploy_bundle/backend
+          cp -r .github/workflows/deploy_script.sh deploy_bundle/deploy_script.sh
+          chmod +x deploy_bundle/deploy_script.sh
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p 10022 43.159.33.138 >> ~/.ssh/known_hosts
+
+      - name: Deploy to production server
+        run: |
+          scp -P 10022 -r deploy_bundle/* lighthouse@43.159.33.138:/tmp/miaoxiang_deploy/
+          ssh -p 10022 lighthouse@43.159.33.138 "bash /tmp/miaoxiang_deploy/deploy_script.sh"
+          echo "Deployment completed! Please ensure nginx is configured correctly."
+          echo "Nginx config template is available at .github/workflows/nginx.conf"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf ~/.ssh/id_rsa
+          rm -rf deploy_bundle
