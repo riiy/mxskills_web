@@ -72,6 +72,12 @@ async def generate_report(query: str, output_dir: Path) -> Dict:
                 },
             )
             resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "")
+            if "application/json" not in content_type.lower():
+                return {
+                    **result_base,
+                    "error": "报告生成服务返回了非JSON内容，请稍后重试或检查接口配置。",
+                }
             payload = resp.json()
     except httpx.TimeoutException:
         return {**result_base, "error": "报告生成服务暂时不可用，请稍后重试。"}
@@ -79,6 +85,11 @@ async def generate_report(query: str, output_dir: Path) -> Dict:
         return {
             **result_base,
             "error": f"报告生成服务返回异常状态码 {exc.response.status_code}，请稍后重试。",
+        }
+    except json.JSONDecodeError:
+        return {
+            **result_base,
+            "error": "报告生成服务返回内容无法解析，请稍后重试或检查接口配置。",
         }
     except Exception as exc:
         return {**result_base, "error": f"报告生成服务暂时不可用，请稍后重试。（{exc}）"}

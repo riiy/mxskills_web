@@ -1,4 +1,15 @@
 ```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.exe
+*.out
+
 # Dependencies
 node_modules/
 
@@ -83,3 +94,8 @@ dmypy.json
 *.tar.xz
 *.tar.zst
 ```
+# System files
+.DS_Store
+Thumbs.db
+# Generate files
+miaoxiang/

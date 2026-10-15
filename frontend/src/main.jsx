@@ -7,6 +7,24 @@ import './styles.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001';
 
+async function readApiJson(response, fallbackMessage) {
+  const text = await response.text();
+  const trimmed = text.trim();
+  let data = null;
+  if (trimmed) {
+    try {
+      data = JSON.parse(trimmed);
+    } catch {
+      const status = response.status ? `HTTP ${response.status}` : 'unknown status';
+      throw new Error(`${fallbackMessage}：接口返回非 JSON 内容（${status}），请检查后端 API 地址 ${API_BASE}`);
+    }
+  }
+  if (!response.ok) {
+    throw new Error(data?.detail || data?.message || `${fallbackMessage}（HTTP ${response.status}）`);
+  }
+  return data || {};
+}
+
 function groupSkills(skills) {
   return skills.reduce((groups, skill) => {
     const group = skill.group || '其他';
@@ -84,10 +102,7 @@ function App() {
 
   useEffect(() => {
     fetch(`${API_BASE}/api/skills`)
-      .then((res) => {
-        if (!res.ok) throw new Error('技能列表加载失败');
-        return res.json();
-      })
+      .then((res) => readApiJson(res, '技能列表加载失败'))
       .then((data) => {
         setSkills(data.skills || []);
         if (data.skills?.[0]) setActiveId(data.skills[0].id);
@@ -122,8 +137,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skillId: activeSkill.id, query: query.trim(), params })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || '执行失败');
+      const data = await readApiJson(response, '执行失败');
       setResult(data);
     } catch (error) {
       setResult({ ok: false, message: error.message, content: '' });
@@ -213,7 +227,11 @@ function App() {
             {result?.files?.length ? (
               <div className="artifact-list">
                 {result.files.map((file) => (
-                  <a key={file.path} href={`${API_BASE}/api/files?path=${encodeURIComponent(file.path)}`}>
+                  <a
+                    key={file.path}
+                    href={`${API_BASE}/api/files?path=${encodeURIComponent(file.path)}&filename=${encodeURIComponent(file.name)}`}
+                    download={file.name}
+                  >
                     <Download size={15} />
                     <span>{file.name}</span>
                   </a>
